@@ -1,10 +1,5 @@
 Plugin Builder Results
 
-Your plugin Gobbler was created in:
-    D:/OneDrive - VicRoads/CODE/MapManager/gobbler
-
-Your QGIS plugin directory is located at:
-    C:/Users/Rob/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins
 
 What's Next:
 
