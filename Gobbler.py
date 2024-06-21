@@ -41,6 +41,65 @@ from .identifier import IdentifyTool
 def loggingtime():
     return datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+src_button_css = """
+            QPushButton {
+                background-color: #20ff0000; /* #f0f0f0;  light gray background */
+                border: 1px solid #bfbfbf; /* gray border */
+                border-radius: 3px;
+                padding: 5px;
+                color: black;
+                font: bold 14px;
+            }
+            QPushButton:hover {
+                background-color: #ff6666; /* slightly darker gray when hovered */
+            }
+            QPushButton:pressed {
+                background-color: #d9d9d9; /* darker gray when pressed */
+            }
+        """
+dest_button_css = """
+            QPushButton {
+                background-color: #2000ff00; /* #f0f0f0;  light gray background */
+                border: 1px solid #bfbfbf; /* gray border */
+                border-radius: 3px;
+                padding: 5px;
+                color: black;
+                font: bold 14px;
+            }
+            QPushButton:hover {
+                background-color: #66ff66; /* slightly darker gray when hovered */
+            }
+            QPushButton:pressed {
+                background-color: #d9d9d9; /* darker gray when pressed */
+            }
+        """
+copy_button_css = """
+            QPushButton {
+                border: none;
+                height: 30px;
+                color: black;
+                font: bold 14px;
+            }
+            QPushButton {
+                background: qlineargradient(
+                    spread: pad,
+                    x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+                    stop: 0 #80ff0000,
+                    stop: 1 #8000ff00
+                );
+            }
+            QPushButton:hover {
+                background: qlineargradient(
+                    spread: pad,
+                    x1: 0, y1: 0.5, x2: 1, y2: 0.5,
+                    stop: 0 #ff6666,
+                    stop: 1 #66ff66
+                    
+                );color: white;
+            }
+        """
+
+
 
 class Gobbler:
     def __init__(self, iface):
@@ -71,6 +130,10 @@ class Gobbler:
 
         self.pluginIsActive = False
         self.dockwidget = None
+        
+        # Context menu
+        # self.menu = None
+        # self.action = None
 
 
     def tr(self, message):
@@ -134,47 +197,43 @@ class Gobbler:
             self.dockwidget.tableWidget.setColumnCount(4)
             self.dockwidget.tableWidget.setHorizontalHeaderLabels(["SRC: Field Name", "SRC: Attribute","DEST: Field Name", "DEST: Attribute"])
 
-    def src_callback(self, feature):
+    def feature_callback(self, feature, source=True):
         if feature is not None and isinstance(feature, QgsFeature):
             if self.dockwidget.tableWidget.columnCount() != 4:
                 self.setup_id_table()
-            QgsMessageLog.logMessage(f"You clicked on feature {feature.id()}", "Gobbler", Qgis.Info)
-            self.src_selected_id = feature.id()
-            src_fields = self.get_source_fields()
-            self.dockwidget.tableWidget.setRowCount(len(src_fields))
+
+            feature_type = "source" if source else "destination"
+            # QgsMessageLog.logMessage(f"You clicked on {feature_type} feature {feature.id()}", "Gobbler", Qgis.Info)
+
+            selected_id_attr = 'src_selected_id' if source else 'dest_selected_id'
+            setattr(self, selected_id_attr, feature.id())
+
+            fields = self.get_source_fields() if source else self.get_destination_fields()
+            self.dockwidget.tableWidget.setRowCount(len(fields))
+
+            column_offset = 0 if source else 2
+            color = self.src_colour if source else self.dest_colour
             rowcnt = 0
+
             for srcfld, destfld in self.field_mapping.items():
-                field_item = QTableWidgetItem(srcfld)
-                attribute_item = QTableWidgetItem(str(feature[srcfld]))
-                self.dockwidget.tableWidget.setItem(rowcnt, 0, field_item)
-                self.dockwidget.tableWidget.setItem(rowcnt, 1, attribute_item)
+                field_item = QTableWidgetItem(srcfld if source else destfld)
+                attribute_item = QTableWidgetItem(str(feature[srcfld if source else destfld]))
+                self.dockwidget.tableWidget.setItem(rowcnt, column_offset, field_item)
+                self.dockwidget.tableWidget.setItem(rowcnt, column_offset + 1, attribute_item)
                 rowcnt += 1
-                
-            self.change_column_color(self.dockwidget.tableWidget, 0, self.src_colour)
-            self.change_column_color(self.dockwidget.tableWidget, 1, self.src_colour)
+
+            self.change_column_color(self.dockwidget.tableWidget, column_offset, color)
+            self.change_column_color(self.dockwidget.tableWidget, column_offset + 1, color)
+
             self.canvas.unsetMapTool(self.feature_identifier)
             self.dockwidget.tabWidget.setCurrentIndex(0)
 
+    def src_callback(self, feature):
+        self.feature_callback(feature, source=True)
+
     def dest_callback(self, feature):
-        if feature is not None and isinstance(feature, QgsFeature):
-            if self.dockwidget.tableWidget.columnCount() != 4:
-                self.setup_id_table()
-            QgsMessageLog.logMessage(f"You clicked on feature {feature.id()}", "Gobbler", Qgis.Info)
-            self.dest_selected_id = feature.id()
-            dest_fields = self.get_destination_fields()           
-            self.dockwidget.tableWidget.setRowCount(len(dest_fields))
-            QgsMessageLog.logMessage(f"dest fileds : {dest_fields}", "Gobbler", Qgis.Info)
-            rowcnt = 0
-            for srcfld, destfld in self.field_mapping.items():
-                field_item = QTableWidgetItem(destfld)
-                attribute_item = QTableWidgetItem(str(feature[destfld]))
-                self.dockwidget.tableWidget.setItem(rowcnt, 2, field_item)
-                self.dockwidget.tableWidget.setItem(rowcnt, 3, attribute_item)
-                rowcnt += 1
-            self.change_column_color(self.dockwidget.tableWidget, 2, self.dest_colour)
-            self.change_column_color(self.dockwidget.tableWidget, 3, self.dest_colour)
-            self.canvas.unsetMapTool(self.feature_identifier)
-            self.dockwidget.tabWidget.setCurrentIndex(0)
+        self.feature_callback(feature, source=False)
+
 
     def open_fld_mapper(self):
         mappings = self.retrieve_variable("field_mapping")
@@ -185,7 +244,7 @@ class Gobbler:
         dialog.load_layers()
         if dialog.exec_() == QDialog.Accepted:
             flds = dialog.get_mappings()
-            QgsMessageLog.logMessage(f"mappings : {flds}", "Gobbler", Qgis.Info)
+            # QgsMessageLog.logMessage(f"mappings : {flds}", "Gobbler", Qgis.Info)
             self.save_variable("field_mapping", json.dumps(flds))
             self.field_mapping = flds
             self.dockwidget.tableWidget.clearContents()
@@ -197,13 +256,13 @@ class Gobbler:
         self.dockwidget.tab_field_map.clearContents()
         self.dockwidget.tab_field_map.setRowCount(0)
         numb_fields = len(self.get_source_fields())
-        QgsMessageLog.logMessage(f"mappings : number fields => {numb_fields}", "Gobbler", Qgis.Info)
+        # QgsMessageLog.logMessage(f"mappings : number fields => {numb_fields}", "Gobbler", Qgis.Info)
         self.dockwidget.tab_field_map.setColumnCount(2)
         # self.dockwidget.tab_field_map.setRowCount(numb_fields)
         self.dockwidget.tab_field_map.setHorizontalHeaderLabels([f"src: {self.src_lyr.name()}", f"Dest: {self.dest_lyr.name()}"])
         rowcnt = 0
         for srcfld, destfld in self.field_mapping.items():
-            QgsMessageLog.logMessage(f"mappings : srcfld, destfld => {srcfld}, {destfld}", "Gobbler", Qgis.Info)
+            # QgsMessageLog.logMessage(f"mappings : srcfld, destfld => {srcfld}, {destfld}", "Gobbler", Qgis.Info)
             self.dockwidget.tab_field_map.insertRow(rowcnt)
             self.dockwidget.tab_field_map.setItem(rowcnt, 0, QTableWidgetItem(srcfld))
             self.dockwidget.tab_field_map.setItem(rowcnt, 1, QTableWidgetItem(destfld))      
@@ -224,7 +283,8 @@ class Gobbler:
         
     def select_destination_feature(self):
         lyr = self.dest_lyr
-        QgsMessageLog.logMessage(f"Destination Layer: {lyr.name()}", "Gobbler", Qgis.Info)
+        self.iface.messageBar().pushMessage("Info", f"Destination Layer: {lyr.name()}", level=Qgis.Info)
+        # QgsMessageLog.logMessage(f"Destination Layer: {lyr.name()}", "Gobbler", Qgis.Info)
         self.feature_identifier = IdentifyTool(self.canvas, lyr, False)
         self.feature_identifier.setLayer(lyr)
         self.feature_identifier.featureIdentified.connect(self.dest_callback)
@@ -232,7 +292,8 @@ class Gobbler:
 
     def select_source_feature(self):
         lyr = self.src_lyr
-        QgsMessageLog.logMessage(f"Source Layer: {lyr.name()}", "Gobbler", Qgis.Info)
+        # QgsMessageLog.logMessage(f"Source Layer: {lyr.name()}", "Gobbler", Qgis.Info)
+        self.iface.messageBar().pushMessage("Info", f"Source Layer: {lyr.name()}", level=Qgis.Info)
         self.feature_identifier = IdentifyTool(self.canvas, lyr, True)
         self.feature_identifier.setLayer(lyr)
         self.feature_identifier.featureIdentified.connect(self.src_callback)
@@ -248,8 +309,10 @@ class Gobbler:
                 destination_layer_name = self.dest_lyr.name()
                 self.save_variable("source_layer", source_layer_name)
                 self.save_variable("destination_layer", destination_layer_name)
-                QgsMessageLog.logMessage(f"Source Layer: {source_layer_name}", "Gobbler", Qgis.Info)
-                QgsMessageLog.logMessage(f"Destination Layer: {destination_layer_name}", "Gobbler", Qgis.Info)
+                self.iface.messageBar().pushMessage("Info", f"Source Layer: {source_layer_name}, Destination Layer: {destination_layer_name}", level=Qgis.Info)
+                # 
+                # QgsMessageLog.logMessage(f"Source Layer: {source_layer_name}", "Gobbler", Qgis.Info)
+                # QgsMessageLog.logMessage(f"Destination Layer: {destination_layer_name}", "Gobbler", Qgis.Info)
                 self.dockwidget.txt_src.setText(source_layer_name)
                 self.dockwidget.txt_dest.setText(destination_layer_name)
     
@@ -273,11 +336,14 @@ class Gobbler:
         for row in range(self.dockwidget.tableWidget.rowCount()):
             dest_fld = self.dockwidget.tableWidget.item(row, 2).text()
             dest_value = self.dockwidget.tableWidget.item(row, 1).text()
-            QgsMessageLog.logMessage(f"dest : {dest_fld} : {dest_value}", "Gobbler", Qgis.Info)
+            # QgsMessageLog.logMessage(f"dest : {dest_fld} : {dest_value}", "Gobbler", Qgis.Info)
             target_feature.setAttribute(dest_fld, dest_value)
 
         self.dest_lyr.updateFeature(target_feature)
         self.dest_lyr.commitChanges()
+        saved_feature = self.dest_lyr.getFeature(self.dest_selected_id)
+        self.iface.messageBar().pushMessage("Info", f"{self.dest_selected_id} updated", level=Qgis.Info)
+        self.feature_callback(saved_feature, False)
 
     def change_column_color(self, table, column_index, color):
         for row in range(table.rowCount()):
@@ -311,9 +377,15 @@ class Gobbler:
             else:
                 self.open_fld_mapper()
             self.populate_field_table()
+            
+            self.dockwidget.btn_copy.setStyleSheet(copy_button_css) 
             self.dockwidget.btn_copy.clicked.connect(self.copy_attributes)
             self.dockwidget.btn_dest.clicked.connect(self.select_destination_feature)
             self.dockwidget.btn_src.clicked.connect(self.select_source_feature)
+            
+            self.dockwidget.btn_dest.setStyleSheet(dest_button_css) 
+            self.dockwidget.btn_src.setStyleSheet(src_button_css) 
+            
             self.dockwidget.btn_mapfields.clicked.connect(self.open_fld_mapper)
             self.dockwidget.btn_layers.clicked.connect(self.show_layer_selection_dialog)
             self.dockwidget.closingPlugin.connect(self.onClosePlugin)

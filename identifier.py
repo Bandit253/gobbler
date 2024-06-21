@@ -12,18 +12,14 @@ class IdentifyTool(QgsMapToolIdentifyFeature):
         self.canvas = canvas
         self.layer = layer
         self.isSource = isSource
-        # self.source_feature = None
-        # self.dest_feature = None
 
     def canvasReleaseEvent(self, event):
         if self.isSource:
             colour = QColor(255, 0, 0)
-            self.clear_highlights(colour)
-            # self.source_feature = None            
+            self.clear_highlights(colour)        
         else:
             colour = QColor(0, 255, 0)
             self.clear_highlights(colour)
-            # self.dest_feature = None
             
         results = self.identify(event.x(), event.y(), self.TopDownStopAtFirst, [self.layer])
         if results:
@@ -33,10 +29,7 @@ class IdentifyTool(QgsMapToolIdentifyFeature):
             highlight.setWidth(4)
             highlight.setColor(colour)        
             highlight.show()
-            # if self.isSource:
-            #     self.source_feature = highlight
-            # else:
-            #     self.dest_feature = highlight
+
                     
     def clear_highlights(self, colour):
         """ Removes highlight objects from the map canvas """
