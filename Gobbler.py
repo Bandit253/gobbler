@@ -22,11 +22,12 @@
  ***************************************************************************/
 """
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
-from qgis.PyQt.QtGui import QIcon, QColor, QFont
-from qgis.PyQt.QtWidgets import QAction, QMessageBox, QTableWidgetItem, QDialog, QMenu
+from qgis.PyQt.QtGui import QIcon, QColor, QFont, QImage, QPainter
+from qgis.PyQt.QtWidgets import (QAction, QMessageBox, QTableWidgetItem, QDialog, QMenu, QFileDialog,QInputDialog,
+                                QWidget, QVBoxLayout, QSpacerItem, QSizePolicy, QWidgetAction)
 from qgis.gui import QgsMapToolPan
 
-from qgis.core import QgsMessageLog, QgsProject, QgsWkbTypes, Qgis, QgsFeature
+from qgis.core import QgsMessageLog, QgsProject, QgsWkbTypes, Qgis, QgsFeature, QgsMapRendererCustomPainterJob, QgsMapSettings
 # Initialize Qt resources from file resources.py
 from .resources import *
 import os.path
@@ -137,6 +138,7 @@ class Gobbler:
         self.src_action = None
         self.dest_action = None
         self.copy_action = None
+        self.query_action = None
 
 
     def tr(self, message):
@@ -169,6 +171,9 @@ class Gobbler:
         self.dest_action.triggered.connect(self.select_destination_feature)
         self.copy_action = QAction(QIcon(":/plugins/Gobbler/icon_copy.png"), ">>> Copy >>>", self.iface.mainWindow())
         self.copy_action.triggered.connect(self.copy_attributes)
+
+        self.query_action = QAction(QIcon(":/plugins/Gobbler/icon_query.png"), "Save query", self.iface.mainWindow())
+        self.query_action.triggered.connect(self.capture_map_image_and_centroid)
         
         self.iface.mapCanvas().setContextMenuPolicy(Qt.CustomContextMenu)
         self.iface.mapCanvas().customContextMenuRequested.connect(self.show_context_menu)
@@ -246,12 +251,30 @@ class Gobbler:
     def dest_callback(self, feature):
         self.feature_callback(feature, source=False)
 
+    def add_spacer_to_menu(self, menu):
+        """
+        Add a spacer to the menu.
+        
+        :param menu: QMenu - The context menu to which the spacer will be added.
+        """
+        spacer_widget = QWidget()
+        spacer_layout = QVBoxLayout()
+        spacer_item = QSpacerItem(20, 5, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        spacer_layout.addItem(spacer_item)
+        spacer_widget.setLayout(spacer_layout)
+        
+        spacer_action = QWidgetAction(menu)
+        spacer_action.setDefaultWidget(spacer_widget)
+        menu.addAction(spacer_action)
+
     def show_context_menu(self, point):
         self.menu = QMenu()
         # self.menu.addAction(self.pan_action)
         self.menu.addAction(self.src_action)
         self.menu.addAction(self.dest_action)
         self.menu.addAction(self.copy_action)
+        self.add_spacer_to_menu(self.menu)
+        self.menu.addAction(self.query_action)
         self.menu.exec_(self.canvas.mapToGlobal(point))
 
     def activate_pan_tool(self):
@@ -273,7 +296,78 @@ class Gobbler:
             self.dockwidget.tableWidget.clearContents()
             self.dockwidget.tableWidget.setRowCount(0)
             self.populate_field_table()
-            
+    
+    def append_line_to_file(self, file_path, line):
+        """
+        Append a line of text to a specified file.
+
+        :param file_path: str - The path to the file.
+        :param line: str - The line of text to append.
+        """
+        try:
+            with open(file_path, 'a') as file:
+                file.write(line + '\n')
+            print(f"Successfully appended to the file: {file_path}")
+        except Exception as e:
+            print(f"Error appending to the file: {e}")
+        return
+    
+    def capture_map_image_and_centroid(self):
+        # Get the current map canvas and its extent
+        canvas = self.canvas        
+        extent = canvas.extent()
+    
+        # Calculate the centroid of the extent
+        centroid = extent.center()
+        centroid_coords = (centroid.x(), centroid.y())
+        
+        # Create an image with the size of the map canvas
+        width = canvas.width()
+        height = canvas.height()
+        image = QImage(width, height, QImage.Format_ARGB32)
+        image.fill(0)
+        
+        # Render the map canvas to the image
+        painter = QPainter(image)
+        job = QgsMapRendererCustomPainterJob(canvas.mapSettings(), painter)
+        job.start()
+        job.waitForFinished()
+        painter.end()
+        
+        # Ask the user to input a note
+        note, ok = QInputDialog.getText(None, "Enter Note", "Please enter a note for this entry:")
+        if not ok:
+            # QMessageBox.warning(None, "No Note", "No note entered. Aborting operation.")
+            self.iface.messageBar().pushMessage("No Note", f"No note entered. Aborting operation.", level=Qgis.Info)
+            return
+
+        report_folder = self.retrieve_variable("report_folder") or ""
+        options = QFileDialog.Options()
+        save_file_dialog = QFileDialog()
+        json_file_path, _ = save_file_dialog.getOpenFileName(None, "Select File to Write report to", report_folder, "CSV Files (*.csv);;All Files (*)", options=options)
+        json_file_path = str(json_file_path).replace("/","\\" )
+        report_folder = os.path.dirname(json_file_path)
+        self.save_variable("report_folder", report_folder)
+        if not json_file_path:
+            # QMessageBox.warning(None, "No File", "No file selected. Aborting operation.")
+            self.iface.messageBar().pushMessage("No File", "No file selected. Aborting operation.", level=Qgis.Info)
+            return
+
+        # Determine the next image filename
+        base_image_name = "image_"
+        image_index = 1
+        while os.path.exists(os.path.join(report_folder, f"{base_image_name}{image_index}.png")):
+            image_index += 1
+        image_path = os.path.join(report_folder, f"{base_image_name}{image_index}.png")
+
+        try:
+            image.save(image_path, "PNG")
+            new_entry = f"""{note},{centroid_coords[0]},{centroid_coords[1]},{image_path}"""
+            self.append_line_to_file(json_file_path, new_entry)              
+            self.iface.messageBar().pushMessage( "Success", f"Image and coordinates saved successfully:\nImage: {image_path}\nJSON: {json_file_path}", level=Qgis.Info)
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Failed to save data: {e}")   
+        return
 
     def populate_field_table(self):
         self.dockwidget.tab_field_map.clearContents()
@@ -354,6 +448,8 @@ class Gobbler:
     
     def copy_attributes(self):
         if not self.src_selected_id or not self.dest_selected_id:
+            return
+        if self.dockwidget.tableWidget.itemAt(0, 0) is None or self.dockwidget.tableWidget.itemAt(0, 2) is None:
             return
         self.dest_lyr.startEditing()
         target_feature = self.dest_lyr.getFeature(self.dest_selected_id)

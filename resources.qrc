@@ -4,5 +4,6 @@
         <file>icon_copy.png</file>
         <file>icon_destination.png</file>
         <file>icon_source.png</file>
+        <file>icon_query.png</file>
     </qresource>
 </RCC>

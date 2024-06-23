@@ -1,6 +1,7 @@
 
 pb_tool deploy -y
 
+pyrcc5 -o resources.py resources.qrc
 
 What's Next:
 
