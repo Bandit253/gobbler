@@ -22,8 +22,9 @@
  ***************************************************************************/
 """
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
-from qgis.PyQt.QtGui import QIcon, QColor
-from qgis.PyQt.QtWidgets import QAction, QMessageBox, QTableWidgetItem, QDialog
+from qgis.PyQt.QtGui import QIcon, QColor, QFont
+from qgis.PyQt.QtWidgets import QAction, QMessageBox, QTableWidgetItem, QDialog, QMenu
+from qgis.gui import QgsMapToolPan
 
 from qgis.core import QgsMessageLog, QgsProject, QgsWkbTypes, Qgis, QgsFeature
 # Initialize Qt resources from file resources.py
@@ -84,8 +85,8 @@ copy_button_css = """
                 background: qlineargradient(
                     spread: pad,
                     x1: 0, y1: 0.5, x2: 1, y2: 0.5,
-                    stop: 0 #80ff0000,
-                    stop: 1 #8000ff00
+                    stop: 0 #20ff0000,
+                    stop: 1 #2000ff00
                 );
             }
             QPushButton:hover {
@@ -132,8 +133,10 @@ class Gobbler:
         self.dockwidget = None
         
         # Context menu
-        # self.menu = None
-        # self.action = None
+        self.menu = None
+        self.src_action = None
+        self.dest_action = None
+        self.copy_action = None
 
 
     def tr(self, message):
@@ -144,25 +147,32 @@ class Gobbler:
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
         action.setEnabled(enabled_flag)
-
         if status_tip is not None:
             action.setStatusTip(status_tip)
-
         if whats_this is not None:
             action.setWhatsThis(whats_this)
-
         if add_to_toolbar:
             self.toolbar.addAction(action)
-
         if add_to_menu:
             self.iface.addPluginToVectorMenu(self.menu, action)
-
         self.actions.append(action)
         return action
 
     def initGui(self):
         icon_path = ':/plugins/Gobbler/icon.png'
         self.add_action(icon_path, text=self.tr(u'Gobbler'), callback=self.run, parent=self.iface.mainWindow())
+        
+        # context menu
+        self.src_action = QAction(QIcon(":/plugins/Gobbler/icon_source.png"), "Select source", self.iface.mainWindow())
+        self.src_action.triggered.connect(self.select_source_feature)
+        self.dest_action = QAction(QIcon(":/plugins/Gobbler/icon_destination.png"), "Select destination", self.iface.mainWindow())
+        self.dest_action.triggered.connect(self.select_destination_feature)
+        self.copy_action = QAction(QIcon(":/plugins/Gobbler/icon_copy.png"), ">>> Copy >>>", self.iface.mainWindow())
+        self.copy_action.triggered.connect(self.copy_attributes)
+        
+        self.iface.mapCanvas().setContextMenuPolicy(Qt.CustomContextMenu)
+        self.iface.mapCanvas().customContextMenuRequested.connect(self.show_context_menu)
+
 
     def onClosePlugin(self):
         self.dockwidget.closingPlugin.disconnect(self.onClosePlugin)
@@ -173,6 +183,9 @@ class Gobbler:
             self.iface.removePluginVectorMenu(self.tr(u'&Gobbler'), action)
             self.iface.removeToolBarIcon(action)
         del self.toolbar
+        # context menu
+        self.iface.mapCanvas().customContextMenuRequested.disconnect(self.show_context_menu)
+
 
     def get_active_layer(self):
         lyrs = self.iface.layerTreeView().selectedLayers()
@@ -201,29 +214,28 @@ class Gobbler:
         if feature is not None and isinstance(feature, QgsFeature):
             if self.dockwidget.tableWidget.columnCount() != 4:
                 self.setup_id_table()
-
-            feature_type = "source" if source else "destination"
-            # QgsMessageLog.logMessage(f"You clicked on {feature_type} feature {feature.id()}", "Gobbler", Qgis.Info)
-
+            # feature_type = "source" if source else "destination"
+            # # QgsMessageLog.logMessage(f"You clicked on {feature_type} feature {feature.id()}", "Gobbler", Qgis.Info)
             selected_id_attr = 'src_selected_id' if source else 'dest_selected_id'
             setattr(self, selected_id_attr, feature.id())
-
             fields = self.get_source_fields() if source else self.get_destination_fields()
             self.dockwidget.tableWidget.setRowCount(len(fields))
-
             column_offset = 0 if source else 2
             color = self.src_colour if source else self.dest_colour
             rowcnt = 0
-
             for srcfld, destfld in self.field_mapping.items():
                 field_item = QTableWidgetItem(srcfld if source else destfld)
                 attribute_item = QTableWidgetItem(str(feature[srcfld if source else destfld]))
                 self.dockwidget.tableWidget.setItem(rowcnt, column_offset, field_item)
                 self.dockwidget.tableWidget.setItem(rowcnt, column_offset + 1, attribute_item)
                 rowcnt += 1
-
             self.change_column_color(self.dockwidget.tableWidget, column_offset, color)
             self.change_column_color(self.dockwidget.tableWidget, column_offset + 1, color)
+                    
+            self.change_column_bold(self.dockwidget.tableWidget, column_offset)
+            self.change_column_noteditable(self.dockwidget.tableWidget, column_offset)
+            if not source:
+                self.change_column_noteditable(self.dockwidget.tableWidget, column_offset +1)
 
             self.canvas.unsetMapTool(self.feature_identifier)
             self.dockwidget.tabWidget.setCurrentIndex(0)
@@ -234,13 +246,24 @@ class Gobbler:
     def dest_callback(self, feature):
         self.feature_callback(feature, source=False)
 
+    def show_context_menu(self, point):
+        self.menu = QMenu()
+        # self.menu.addAction(self.pan_action)
+        self.menu.addAction(self.src_action)
+        self.menu.addAction(self.dest_action)
+        self.menu.addAction(self.copy_action)
+        self.menu.exec_(self.canvas.mapToGlobal(point))
+
+    def activate_pan_tool(self):
+        pan_tool = QgsMapToolPan(self.iface.mapCanvas())
+        self.iface.mapCanvas().setMapTool(pan_tool)
 
     def open_fld_mapper(self):
         mappings = self.retrieve_variable("field_mapping")
         if mappings:
-            dialog = FieldMapper(self.src_lyr, self.dest_lyr, json.loads(mappings))
+            dialog = FieldMapper(self.src_lyr, self.dest_lyr, json.loads(mappings), self.iface)
         else:
-            dialog = FieldMapper(self.src_lyr, self.dest_lyr, None)
+            dialog = FieldMapper(self.src_lyr, self.dest_lyr, None, self.iface)
         dialog.load_layers()
         if dialog.exec_() == QDialog.Accepted:
             flds = dialog.get_mappings()
@@ -255,7 +278,7 @@ class Gobbler:
     def populate_field_table(self):
         self.dockwidget.tab_field_map.clearContents()
         self.dockwidget.tab_field_map.setRowCount(0)
-        numb_fields = len(self.get_source_fields())
+        # numb_fields = len(self.get_source_fields())
         # QgsMessageLog.logMessage(f"mappings : number fields => {numb_fields}", "Gobbler", Qgis.Info)
         self.dockwidget.tab_field_map.setColumnCount(2)
         # self.dockwidget.tab_field_map.setRowCount(numb_fields)
@@ -268,8 +291,10 @@ class Gobbler:
             self.dockwidget.tab_field_map.setItem(rowcnt, 1, QTableWidgetItem(destfld))      
             rowcnt += 1      
         self.change_column_color(self.dockwidget.tab_field_map, 0, self.src_colour)
-        self.change_column_color(self.dockwidget.tab_field_map, 1, self.dest_colour)
-    
+        self.change_column_color(self.dockwidget.tab_field_map, 1, self.dest_colour) 
+        self.change_column_noteditable(self.dockwidget.tab_field_map, 0)
+        self.change_column_noteditable(self.dockwidget.tab_field_map, 1)
+
     
     def get_source_fields(self):
         return list(self.field_mapping.keys())
@@ -350,6 +375,22 @@ class Gobbler:
             item = table.item(row, column_index)
             if item:
                 item.setBackground(color)
+    
+    def change_column_bold(self, table, column_index):
+        bold_font = QFont()
+        bold_font.setBold(True)
+        for row in range(table.rowCount()):
+            item = table.item(row, column_index)
+            if item:
+                item.setFont(bold_font)
+    
+    def change_column_noteditable(self, table, column_index):
+        
+        for row in range(table.rowCount()):
+            item = table.item(row, column_index)
+            if item:
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+    
     
     def run(self):
         if not self.pluginIsActive:

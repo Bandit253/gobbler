@@ -1,4 +1,5 @@
-Plugin Builder Results
+
+pb_tool deploy -y
 
 
 What's Next:

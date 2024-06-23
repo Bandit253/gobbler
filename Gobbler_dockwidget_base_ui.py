@@ -24,7 +24,7 @@ class Ui_MM_UpdaterDockWidgetBase(object):
     def setupUi(self, MM_UpdaterDockWidgetBase):
         if not MM_UpdaterDockWidgetBase.objectName():
             MM_UpdaterDockWidgetBase.setObjectName(u"MM_UpdaterDockWidgetBase")
-        MM_UpdaterDockWidgetBase.resize(546, 413)
+        MM_UpdaterDockWidgetBase.resize(546, 405)
         self.dockWidgetContents = QWidget()
         self.dockWidgetContents.setObjectName(u"dockWidgetContents")
         self.gridLayout = QGridLayout(self.dockWidgetContents)
@@ -35,6 +35,11 @@ class Ui_MM_UpdaterDockWidgetBase(object):
         self.btn_src.setObjectName(u"btn_src")
 
         self.horizontalLayout.addWidget(self.btn_src)
+
+        self.btn_copy = QPushButton(self.dockWidgetContents)
+        self.btn_copy.setObjectName(u"btn_copy")
+
+        self.horizontalLayout.addWidget(self.btn_copy)
 
         self.btn_dest = QPushButton(self.dockWidgetContents)
         self.btn_dest.setObjectName(u"btn_dest")
@@ -127,11 +132,6 @@ class Ui_MM_UpdaterDockWidgetBase(object):
 
         self.gridLayout.addWidget(self.tabWidget, 2, 0, 1, 1)
 
-        self.btn_copy = QPushButton(self.dockWidgetContents)
-        self.btn_copy.setObjectName(u"btn_copy")
-
-        self.gridLayout.addWidget(self.btn_copy, 1, 0, 1, 1)
-
         MM_UpdaterDockWidgetBase.setWidget(self.dockWidgetContents)
 
         self.retranslateUi(MM_UpdaterDockWidgetBase)
@@ -145,6 +145,7 @@ class Ui_MM_UpdaterDockWidgetBase(object):
     def retranslateUi(self, MM_UpdaterDockWidgetBase):
         MM_UpdaterDockWidgetBase.setWindowTitle(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Gobbler", None))
         self.btn_src.setText(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Source", None))
+        self.btn_copy.setText(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u">>> Copy >>>", None))
         self.btn_dest.setText(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Destination", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Attributes", None))
         self.btn_layers.setText(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Select layers", None))
@@ -152,6 +153,5 @@ class Ui_MM_UpdaterDockWidgetBase(object):
         self.lbl_dest.setText(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Destination", None))
         self.btn_mapfields.setText(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Map Fields", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), QCoreApplication.translate("MM_UpdaterDockWidgetBase", u"Settings", None))
-        self.btn_copy.setText(QCoreApplication.translate("MM_UpdaterDockWidgetBase", u">>> Copy >>>", None))
     # retranslateUi
 

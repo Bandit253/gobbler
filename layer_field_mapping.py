@@ -1,18 +1,20 @@
+import json
 from qgis.core import QgsProject
-from qgis.PyQt.QtWidgets import (QAction, QDialog, QVBoxLayout, QHBoxLayout,
+from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout,QMessageBox,
                                     QListWidget, QTableWidget, QTableWidgetItem,
-                                    QPushButton, QApplication, QMainWindow)
+                                    QPushButton, QFileDialog, QSpacerItem, QSizePolicy)
 from qgis.core import QgsMessageLog, Qgis
 import sys
 
 class FieldMapper(QDialog):
-    def __init__(self, src_lyr, dest_lyr, mappings, parent=None):
+    def __init__(self, src_lyr, dest_lyr, mappings, iface, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Field Mapper")
         self.resize(600, 400)
         self.src_lyr = src_lyr 
         self.dest_lyr = dest_lyr
         self.mapping = mappings
+        self.iface = iface
         # Layouts
         main_layout = QVBoxLayout()
         list_layout = QHBoxLayout()
@@ -24,6 +26,8 @@ class FieldMapper(QDialog):
         # self.loadLayersButton = QPushButton("Load Layers")
         self.addButton = QPushButton("Add Mapping")
         self.removeButton = QPushButton("Remove Mapping")
+        self.saveMapping = QPushButton("Export Mapping")
+        self.loadMapping = QPushButton("Import Mapping")
         # Table Widget
         self.mappingTable = QTableWidget(0, 2)
         self.mappingTable.setHorizontalHeaderLabels([f"src: {self.src_lyr.name()}", f"Dest: {self.dest_lyr.name()}"])
@@ -41,6 +45,9 @@ class FieldMapper(QDialog):
         # button_layout.addWidget(self.loadLayersButton)
         button_layout.addWidget(self.addButton)
         button_layout.addWidget(self.removeButton)
+        button_layout.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        button_layout.addWidget(self.saveMapping)
+        button_layout.addWidget(self.loadMapping)
         list_layout.addLayout(button_layout)
         main_layout.addLayout(list_layout)
         main_layout.addWidget(self.mappingTable)
@@ -52,6 +59,9 @@ class FieldMapper(QDialog):
         # self.loadLayersButton.clicked.connect(self.load_layers)
         self.addButton.clicked.connect(self.add_mapping)
         self.removeButton.clicked.connect(self.remove_mapping)
+        self.saveMapping.clicked.connect(self.save_field_mapping)
+        self.loadMapping.clicked.connect(self.load_field_mapping)
+        
         
     def load_layers(self):
         # Clear existing items
@@ -65,22 +75,65 @@ class FieldMapper(QDialog):
         for field in destflds:
             self.layer2List.addItem(f"{field.name()}")
         if self.mapping:
-            rowcnt = 0
-            for src, dest in self.mapping.items():
-                QgsMessageLog.logMessage(f"{rowcnt} = {src} : {dest}", "Gobbler", Qgis.Info)
-                self.mappingTable.insertRow(rowcnt)
-                self.mappingTable.setItem(rowcnt, 0, QTableWidgetItem(src))
-                self.mappingTable.setItem(rowcnt, 1, QTableWidgetItem(dest))
-                rowcnt += 1
+            # QgsMessageLog.logMessage(f"if self.mapping: {self.mapping}", "Gobbler", Qgis.Info)
+            self.add_to_map_tab()
+        return
+
+    def add_to_map_tab(self):
+        # QgsMessageLog.logMessage(f"add to mapping tab: {self.mapping}", "Gobbler", Qgis.Info)
+        self.mappingTable.clearContents()
+        self.mappingTable.setRowCount(0)
+        rowcnt = 0
+        for src, dest in self.mapping.items():
+            # QgsMessageLog.logMessage(f"{rowcnt} = {src} : {dest}", "Gobbler", Qgis.Info)
+            self.mappingTable.insertRow(rowcnt)
+            self.mappingTable.setItem(rowcnt, 0, QTableWidgetItem(src))
+            self.mappingTable.setItem(rowcnt, 1, QTableWidgetItem(dest))
+            rowcnt += 1
+        return
+
+    def save_field_mapping(self):
+        data = self.mapping
+        options = QFileDialog.Options()
+        file_dialog = QFileDialog()
+        file_dialog.setOptions(options)
+        file_path, _ = file_dialog.getSaveFileName(None, "Save field mapping file", "", "JSON Files (*.json);;All Files (*)")
+        
+        if file_path:
+            try:
+                with open(file_path, 'w') as file:
+                    json.dump(data, file, indent=4)              
+                self.iface.messageBar().pushMessage("Info", f"File saved field mapping successfully at {file_path}", level=Qgis.Info)
+            except Exception as e:
+                QMessageBox.critical(None, "Error", f"Failed to save file: {e}")
+        return
+
+    def load_field_mapping(self):
+        options = QFileDialog.Options()
+        file_dialog = QFileDialog()
+        file_dialog.setOptions(options)
+        file_path, _ = QFileDialog.getOpenFileName(None, "Open field mapping file", "", "JSON Files (*.json);;All Files (*)")
+        
+        if file_path:
+            try:
+                with open(file_path, 'r') as file:
+                    data = json.load(file)
+                # QMessageBox.information(None, f"Success {data}", f"File loaded successfully from {file_path}")
+                self.iface.messageBar().pushMessage("Info",  f"Field mapping loaded successfully from {file_path}", level=Qgis.Info)
+                self.mapping = data
+                self.add_to_map_tab()
+                return data
+            except Exception as e:
+                QMessageBox.critical(None, "Error", f"Failed to load file: {e}")
+                return None
 
     
     def get_mappings(self):
+
         tab = self.mappingTable
         mappings = {}
         for row in range(0, tab.rowCount()):
             mappings[tab.item(row, 0).text()] = tab.item(row, 1).text()
-            # QgsMessageLog.logMessage(f"row: {row}", "MM_Updater", Qgis.Info)
-            # QgsMessageLog.logMessage(f"{tab.item(row, 0).text()}: {tab.item(row, 1).text()}", "MM_Updater", Qgis.Info)
         return mappings
             
     def add_mapping(self):
@@ -99,23 +152,3 @@ class FieldMapper(QDialog):
         # Remove selected row
         currentRow = self.mappingTable.currentRow()
         self.mappingTable.removeRow(currentRow)
-
-# class FieldMapperPlugin:
-#     def __init__(self, iface):
-#         self.iface = iface
-#         self.action = QAction("Field Mapper", self.iface.mainWindow())
-#         self.iface.addPluginToMenu("Field Mapper", self.action)
-#         self.action.triggered.connect(self.run)
-#         self.dialog = None
-        
-#     def run(self):
-#         if self.dialog is None:
-#             self.dialog = FieldMapper(self.iface.mainWindow())
-            
-#         self.dialog.show()
-        
-#         self.dialog.raise_()
-#         self.dialog.activateWindow()
-
-# def classFactory(iface):
-#     return FieldMapperPlugin(iface)
